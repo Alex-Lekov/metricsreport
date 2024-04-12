@@ -71,3 +71,24 @@ def test_classification_metrics_values(binary_classification_data):
     assert report.metrics['FP'] == 2
     assert report.metrics['FN'] == 1
     assert report.metrics['TP'] == 5
+    
+# add test где с threshold=0.5 нет ни одной 1 все 0
+#     y_true = [0, 1, 1, 0, ]
+#    y_pred = [0.2, 0.3, 0.3, 0.1,]
+
+def test_y_pred_bin_all_zeros():
+    y_true = [0, 1, 1, 0]
+    y_pred = [0.2, 0.3, 0.3, 0.1]
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    assert report.metrics['TP'] == 0
+    assert report.metrics['FP'] == 0
+    assert report.metrics['FN'] == 2
+    assert report.metrics['TN'] == 2
+    
+def test_y_true_all_zeros():
+    y_true = [0, 0, 0, 0]
+    y_pred = [0.2, 0.3, 0.3, 0.1]
+    with pytest.raises(ValueError) as exc_info:
+        report = MetricsReport(y_true, y_pred, threshold=0.5)
+    assert str(exc_info.value) == "For classification tasks, y_true should contain at least one True value."
+    
