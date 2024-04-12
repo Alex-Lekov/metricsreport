@@ -50,7 +50,7 @@ class MetricsReport:
         metrics: A dictionary containing all metrics generated.
         target_info: A dictionary containing information about the target variable.
     """
-    def __init__(self, y_true, y_pred, threshold: float = 0.5):
+    def __init__(self, y_true, y_pred, threshold: float = 0.5, verbose=0):
         """
         Initializes the MetricsReport object.
 
@@ -58,12 +58,13 @@ class MetricsReport:
             y_true: A list of true target values.
             y_pred: A list of predicted target values.
             threshold: Threshold for generating binary classification metrics.
+            verbose: Verbosity level.
 
         Returns:
             None
         """
         self.task_type = self._determine_task_type(y_true)
-        print(f'Detecting {self.task_type} task type')
+        #print(f'Detecting {self.task_type} task type')
         self.y_true = np.array(y_true)
         self.y_pred = np.array(y_pred)
         self.threshold = threshold
@@ -72,6 +73,12 @@ class MetricsReport:
 
         if self.task_type == "classification":
             self.y_pred_binary = (self.y_pred > self.threshold).astype(int)
+            if sum(self.y_true) == 0:
+                raise ValueError("For classification tasks, y_true should contain at least one True value.")
+            
+            if sum(self.y_pred_binary) == 0:
+                print(f"Warning: For classification tasks threshold {self.threshold}, sum y_pred: 0, -> should contain at least one True value.")
+            
             # fix for skplt
             self.probas_reval = pd.DataFrame(data={"proba_0": 1 - self.y_pred.ravel(), "proba_1": self.y_pred.ravel()})
             self.metrics = self._generate_classification_metrics()
@@ -124,7 +131,9 @@ class MetricsReport:
         Returns:
             A dictionary of classification metrics.
         """
-        tn, fp, fn, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_binary).ravel()
+        #tn, fp, fn, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_binary).ravel()
+        cm = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_binary).ravel()
+        tn, fp, fn, tp = (cm if cm.size == 4 else [0, 0, 0, 0])  # Default to 0 if not all present
         report = classification_report(
             y_true=self.y_true, 
             y_pred=self.y_pred_binary, 
