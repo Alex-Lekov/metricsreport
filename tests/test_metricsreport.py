@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+from matplotlib import pyplot as plt
 
 from metricsreport import MetricsReport
 
@@ -91,4 +92,20 @@ def test_y_true_all_zeros():
     with pytest.raises(ValueError) as exc_info:
         report = MetricsReport(y_true, y_pred, threshold=0.5)
     assert str(exc_info.value) == "For classification tasks, y_true should contain at least one True value."
+
+# def test_plot_calibration_curve(binary_classification_data):
+#     y_true, y_pred = binary_classification_data
     
+#     # Initialize MetricsReport
+#     metrics_report = MetricsReport(y_true, y_pred)
+    
+#     # Execute the plotting method
+#     plot = metrics_report.plot_calibration_curve()
+    
+#     # Assertions to ensure the plot is created successfully
+#     assert isinstance(plot, plt.Figure), "The output should be a matplotlib Figure."
+#     # Checking that the plot has at least one axis and line
+#     assert len(plot.axes) > 0, "Plot should have at least one axis."
+#     assert len(plot.axes[0].lines) > 0, "Axis should contain at least one line."
+#     assert plot.axes[0].get_title() == 'Calibration plots (Reliability Curves)', "Title does not match."
+#     assert 'Fraction of positives' in [label.get_text() for label in plot.axes[0].get_ylabel()], "Y-axis label is incorrect."

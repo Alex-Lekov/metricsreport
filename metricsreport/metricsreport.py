@@ -1,7 +1,14 @@
+#types
+from typing import List, Optional, Tuple
 import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+from typing import Optional, Tuple, List
+import seaborn as sns
+from typing import Optional, List
 import shutil
 from sklearn.metrics import (
     log_loss,
@@ -22,11 +29,13 @@ from sklearn.metrics import (
     mean_poisson_deviance,
     classification_report,
     precision_recall_curve,
-    roc_curve
+    roc_curve,
+    brier_score_loss
 )
+from sklearn.calibration import calibration_curve, CalibrationDisplay
 
-import scikitplot as skplt
-from plot_metric.functions import BinaryClassification
+#import scikitplot as skplt
+#from plot_metric.functions import BinaryClassification
 import matplotlib.pyplot as plt
 from io import BytesIO
 
@@ -169,64 +178,273 @@ class MetricsReport:
         }
         return metrics
     
-    def plot_roc_curve(self, figsize = (15, 10)) -> plt:
+    def plot_roc_curve(
+        self,
+        figsize: Tuple[int, int] = (15, 10),
+        title: str = 'Receiver Operating Characteristic',
+        curves: Tuple[str] = ('micro', 'macro'),
+        cmap: str = 'nipy_spectral',
+        title_fontsize: str = "large",
+        text_fontsize: str = "medium"
+    ) -> plt.Figure:
         """
-        Generates a ROC curve plot.
+        Generates the ROC curve from labels and predicted scores/probabilities for binary classification.
 
         Args:
-            figsize: the width and height of the figure.
+            figsize (Tuple[int, int], optional): Figure size of the plot. Defaults to (15, 10).
+            title (str, optional): Title of the generated plot. Defaults to 'Receiver Operating Characteristic'.
+            curves (Tuple[str], optional): Listing of which curves to plot ('micro', 'macro'). 
+                Defaults to ('micro', 'macro').
+            cmap (str, optional): Colormap used for plotting. Defaults to 'nipy_spectral'.
+            title_fontsize (str, optional): Matplotlib-style fontsizes for the title. Defaults to 'large'.
+            text_fontsize (str, optional): Matplotlib-style fontsizes for the text. Defaults to 'medium'.
 
         Returns:
-            A ROC curve plot.
+            plt.Figure: A matplotlib figure object that can be shown or saved.
         """
-        bc = BinaryClassification(y_true=self.y_true, y_pred=self.y_pred, labels=["Class 1", "Class 2"])
+        y_true = np.array(self.y_true)
+        y_pred = np.array(self.y_pred)
+
+        if not any(curve in curves for curve in ('micro', 'macro')):
+            raise ValueError('curves must contain "micro" or "macro"')
+
+        # Compute ROC curve and ROC area for binary classification
+        fpr, tpr, thresholds = roc_curve(y_true, y_pred)
+        roc_auc = auc(fpr, tpr)
+
+        # Compute micro-average ROC curve and ROC area
+        fpr_micro, tpr_micro, _ = roc_curve(y_true.ravel(), y_pred.ravel())
+        roc_auc_micro = auc(fpr_micro, tpr_micro)
+
+        # Compute macro-average ROC curve and ROC area
+        all_fpr = np.unique(np.concatenate([fpr]))
+        mean_tpr = np.zeros_like(all_fpr)
+        mean_tpr += np.interp(all_fpr, fpr, tpr)
+        fpr_macro, tpr_macro = all_fpr, mean_tpr / 1
+        roc_auc_macro = auc(fpr_macro, tpr_macro)
+
+        # Calculate optimal threshold
+        youdens_j = tpr - fpr
+        optimal_idx = np.argmax(youdens_j)
+        optimal_threshold = thresholds[optimal_idx]
+
         plt.figure(figsize=figsize)
-        bc.plot_roc_curve()
+        plt.plot(fpr, tpr, color='black', lw=2, label=f'ROC curve (area = {roc_auc:0.2f})')
+
+        if 'micro' in curves:
+            plt.plot(fpr_micro, tpr_micro, label=f'micro-average ROC curve (area = {roc_auc_micro:0.2f})',
+                    color='deeppink', linestyle=':', linewidth=4)
+
+        if 'macro' in curves:
+            plt.plot(fpr_macro, tpr_macro, label=f'macro-average ROC curve (area = {roc_auc_macro:0.2f})',
+                    color='navy', linestyle=':', linewidth=4)
+
+        plt.plot([0, 1], [0, 1], 'r--', lw=2, label='Random guess')
+
+        # Mark the optimal threshold
+        plt.scatter(fpr[optimal_idx], tpr[optimal_idx], marker='o', color='red')
+        plt.axvline(fpr[optimal_idx], color='black', linestyle=':')
+        plt.axhline(tpr[optimal_idx], color='black', linestyle=':')
+        plt.text(fpr[optimal_idx], tpr[optimal_idx] - 0.1, f'Threshold = {optimal_threshold:.2f}', fontsize=text_fontsize, 
+                ha='center', color='black', backgroundcolor='white')
+
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate', fontsize=text_fontsize)
+        plt.ylabel('True Positive Rate', fontsize=text_fontsize)
+        plt.title(title, fontsize=title_fontsize)
+        plt.tick_params(labelsize=text_fontsize)
+        plt.legend(loc='lower right', fontsize=text_fontsize)
+        plt.grid(True)
         return plt
     
-    def plot_precision_recall_curve(self, figsize = (15, 10)) -> plt:
+    def plot_precision_recall_curve(
+        self,
+        figsize: Tuple[int, int] = (15, 10),
+        title: str = 'Precision and Recall Curve',
+        cmap: str = 'nipy_spectral',
+        title_fontsize: str = "large",
+        text_fontsize: str = "medium"
+    ) -> plt.Figure:
         """
-        Generates a precision recall curve plot.
+        Generates the Precision-Recall curve from labels and predicted scores/probabilities for binary classification.
 
         Args:
-            figsize: A tuple of the width and height of the figure.
+            figsize (Tuple[int, int], optional): Figure size of the plot. Defaults to (15, 10).
+            title (str, optional): Title of the generated plot. Defaults to 'Precision and Recall Curve'.
+            cmap (str, optional): Colormap used for plotting. Defaults to 'nipy_spectral'.
+            title_fontsize (str, optional): Matplotlib-style fontsizes for the title. Defaults to 'large'.
+            text_fontsize (str, optional): Matplotlib-style fontsizes for the text. Defaults to 'medium'.
 
         Returns:
-            A precision recall curve plot.
+            plt.Figure: A matplotlib figure object that can be shown or saved.
         """
-        bc = BinaryClassification(y_true=self.y_true, y_pred=self.y_pred, labels=["Class 1", "Class 2"])
+        y_true = np.array(self.y_true)
+        y_pred = np.array(self.y_pred)
+
+        precision, recall, thresholds = precision_recall_curve(y_true, y_pred)
+        average_precision = average_precision_score(y_true, y_pred)
+
+        # Calculate optimal threshold
+        f1_scores = 2 * (precision * recall) / (precision + recall)
+        optimal_idx = np.argmax(f1_scores)
+        optimal_threshold = thresholds[optimal_idx]
+
         plt.figure(figsize=figsize)
-        bc.plot_precision_recall_curve()
+        plt.plot(recall, precision, color='black', lw=2, label=f'PR curve (area = {average_precision:0.2f})')
+        plt.plot([0, 1], [average_precision, average_precision], 'r--', lw=2, label=f'Mean precision = {average_precision:0.2f}')
+        
+        # Plot iso-F1 curves
+        f_scores = np.linspace(0.2, 0.8, num=4)
+        for f_score in f_scores:
+            x = np.linspace(0.01, 1)
+            y = f_score * x / (2 * x - f_score)
+            plt.plot(x[y >= 0], y[y >= 0], color='gray', alpha=0.2, linestyle='--')
+            plt.text(0.9, y[45] + 0.02, f'f1={f_score:0.1f}', fontsize=text_fontsize, color='gray')
+
+        # Mark the optimal threshold
+        plt.scatter(recall[optimal_idx], precision[optimal_idx], marker='o', color='red')
+        plt.axvline(recall[optimal_idx], color='black', linestyle=':')
+        plt.axhline(precision[optimal_idx], color='black', linestyle=':')
+        plt.text(recall[optimal_idx], precision[optimal_idx] - 0.1, f'Threshold = {optimal_threshold:.2f}', fontsize=text_fontsize, 
+                ha='center', color='black', backgroundcolor='white')
+
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('Recall', fontsize=text_fontsize)
+        plt.ylabel('Precision', fontsize=text_fontsize)
+        plt.title(title, fontsize=title_fontsize)
+        plt.tick_params(labelsize=text_fontsize)
+        plt.legend(loc='lower left', fontsize=text_fontsize)
+        plt.grid(True)
         return plt
     
-    def plot_confusion_matrix(self, figsize = (15, 10)) -> plt:
+    def plot_confusion_matrix(self, figsize: Tuple[int, int] = (15, 10), font_size: int = 12, font_weight: str = 'bold') -> plt:
         """
         Generates a confusion matrix plot.
 
         Args:
-            figsize: A tuple of the width and height of the figure.
+            figsize (Tuple[int, int], optional): Figure size for the plot. Defaults to (15, 10).
+            font_size (int, optional): Font size for the numbers inside the confusion matrix. Defaults to 12.
+            font_weight (str, optional): Font weight for the numbers inside the confusion matrix. Defaults to 'bold'.
 
         Returns:
-            A confusion matrix plot.
+            plt: The matplotlib.pyplot object with the plot.
         """
-        bc = BinaryClassification(y_true=self.y_true, y_pred=self.y_pred, labels=["Class 1", "Class 2"])
+        cm = confusion_matrix(self.y_true, self.y_pred_binary)
         plt.figure(figsize=figsize)
-        bc.plot_confusion_matrix()
+        plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+        plt.title('Confusion Matrix')
+        plt.colorbar()
+        tick_marks = np.arange(len(['Negative', 'Positive']))
+        plt.xticks(tick_marks, ['Negative', 'Positive'], rotation=45)
+        plt.yticks(tick_marks, ['Negative', 'Positive'])
+        
+        fmt = 'd'
+        thresh = cm.max() / 2.
+        for i, j in np.ndindex(cm.shape):
+            plt.text(j, i, format(cm[i, j], fmt),
+                    horizontalalignment="center",
+                    fontsize=font_size, 
+                    fontweight=font_weight,
+                    color="white" if cm[i, j] > thresh else "black")
+        
+        plt.ylabel('True label')
+        plt.xlabel('Predicted label')
+        plt.tight_layout()
         return plt
-    
-    def plot_class_distribution(self, figsize = (15, 10)) -> plt:
+
+    def plot_class_distribution(
+        self, 
+        threshold: Optional[float] = None, 
+        display_prediction: bool = True, 
+        alpha: float = 0.5, 
+        jitter: float = 0.3, 
+        pal_colors: Optional[List[str]] = None,
+        display_violin: bool = True, 
+        c_violin: str = 'white', 
+        strip_marker_size: int = 4, 
+        strip_lw_edge: Optional[float] = None,
+        strip_c_edge: Optional[str] = None, 
+        ls_thresh_line: str = ':', 
+        c_thresh_line: str = 'red', 
+        lw_thresh_line: float = 2,
+        title: Optional[str] = None,
+        figsize = (15, 10)
+    ) -> plt:
         """
-        Generates a class distribution plot.
+        Plot distribution of the predictions for each class.
+
+        Note: Threshold here is important because it defines colors for True Positive,
+        False Negative, True Negative, and False Positive.
 
         Args:
-            figsize: A tuple of the width and height of the figure.
+            threshold (float, optional): Threshold to determine the rate between positive 
+                and negative values of the classification. Defaults to self.threshold.
+            display_prediction (bool, optional): Display the points representing each prediction. 
+                Defaults to True.
+            alpha (float, optional): Transparency of each predicted point. Defaults to 0.5.
+            jitter (float, optional): Amount of jitter (only along the categorical axis) to apply. 
+                This can be useful when you have many points and they overlap. Defaults to 0.3.
+            pal_colors (list of str, optional): Colors to use for the different levels of the hue variable. 
+                Should be something that can be interpreted by color_palette(), or a dictionary mapping 
+                hue levels to matplotlib colors. Defaults to ["#00C853", "#FF8A80", "#C5E1A5", "#D50000"].
+            display_violin (bool, optional): Display violin plot. Defaults to True.
+            c_violin (str, optional): Color of the violin plot. Defaults to 'white'.
+            strip_marker_size (int, optional): Size of markers representing predictions. Defaults to 4.
+            strip_lw_edge (float, optional): Size of the linewidth for the edge of point prediction. 
+                Defaults to None.
+            strip_c_edge (str, optional): Color of the linewidth for the edge of point prediction. 
+                Defaults to None.
+            ls_thresh_line (str, optional): Linestyle for the threshold line. Defaults to ':'.
+            c_thresh_line (str, optional): Color for the threshold line. Defaults to 'red'.
+            lw_thresh_line (float, optional): Line width of the threshold line. Defaults to 2.
+            title (str, optional): Title of the graphic. Defaults to None.
 
         Returns:
-            A class distribution plot.
+            plt: The matplotlib.pyplot object with the plot.
         """
-        bc = BinaryClassification(y_true=self.y_true, y_pred=self.y_pred, labels=["Class 1", "Class 2"])
+        if pal_colors is None:
+            pal_colors = ["#00C853", "#FF8A80", "#C5E1A5", "#D50000"]
+        if threshold is None:
+            threshold = self.threshold
+
+        def compute_thresh(row: pd.Series, _threshold: float) -> str:
+            if (row['pred'] >= _threshold) & (row['class'] == 1):
+                return "TP"
+            elif (row['pred'] >= _threshold) & (row['class'] == 0):
+                return 'FP'
+            elif (row['pred'] < _threshold) & (row['class'] == 1):
+                return 'FN'
+            elif (row['pred'] < _threshold) & (row['class'] == 0):
+                return 'TN'
+
+        pred_df = pd.DataFrame({'class': self.y_true, 'pred': self.y_pred})
+        pred_df['type'] = pred_df.apply(lambda x: compute_thresh(x, threshold), axis=1)
+        
+        pred_df_plot = pred_df.copy(deep=True)
+        pred_df_plot["class"] = pred_df_plot["class"].apply(lambda x: "Class 1" if x == 1 else "Class 0")
+        
         plt.figure(figsize=figsize)
-        bc.plot_class_distribution()
+        
+        # Plot violin prediction distribution
+        if display_violin:
+            sns.violinplot(x='class', y='pred', data=pred_df_plot, inner=None, color=c_violin, cut=0)
+
+        # Plot prediction distribution
+        if display_prediction:
+            sns.stripplot(x='class', y='pred', hue='type', data=pred_df_plot,
+                        jitter=jitter, alpha=alpha,
+                        size=strip_marker_size, palette=sns.color_palette(pal_colors),
+                        linewidth=strip_lw_edge, edgecolor=strip_c_edge)
+
+        # Plot threshold
+        plt.axhline(y=threshold, color=c_thresh_line, linewidth=lw_thresh_line, linestyle=ls_thresh_line)
+        plt.title(title if title else 'Threshold at {:.2f}'.format(threshold))
+
+        pred_df['Predicted Class'] = pred_df['pred'].apply(lambda x: "Class 1" if x >= threshold else "Class 0")
+        pred_df.columns = ['True Class', 'Predicted Proba', 'Predicted Type', 'Predicted Class']
+        
         return plt
     
     def plot_class_hist(self, figsize = (15, 10)) -> plt:
@@ -313,56 +531,158 @@ class MetricsReport:
         plt.grid(True)
         return plt
     
-    def plot_calibration_curve(self, figsize = (15, 10)) -> plt:
+    def plot_calibration_curve(self, 
+                               n_bins: int = 10, 
+                               figsize: Tuple[int, int] = (15, 10)
+                               ) -> plt.Figure:
         """
-        Generates a calibration curve plot.
+        Plots calibration curves for classifier probability estimates to show how well the probabilities
+        are calibrated against the actual outcomes. A perfectly calibrated model will have all points on
+        the diagonal line extending from the bottom left to the top right.
 
         Args:
-            figsize: A tuple of the width and height of the figure.
+            n_bins (int): The number of bins to use for the calibration curve. More bins can provide a more
+                          detailed calibration view but require more data.
+            figsize (Tuple[int, int]): The width and height of the plot in inches.
 
         Returns:
-            A calibration curve plot.
+            plt.Figure: A matplotlib figure object that can be shown or saved.
         """
-        skplt.metrics.plot_calibration_curve(self.y_true, [self.probas_reval], n_bins=10, figsize=figsize)
+        plt.figure(figsize=figsize)
+        plt.plot([0, 1], [0, 1], "k:", label="Perfectly calibrated")  # Ideal calibration line
+
+        # Generate calibration curve data
+        fraction_of_positives, mean_predicted_value = calibration_curve(self.y_true, self.y_pred, n_bins=n_bins)
+
+        # Plot the calibration curve
+        plt.plot(mean_predicted_value, fraction_of_positives, 's-', label='Model')
+        plt.title('Calibration plots (Reliability Curves)')
+        plt.xlabel('Mean predicted value')
+        plt.ylabel('Fraction of positives')
+        plt.ylim([-0.05, 1.05])
+        plt.legend(loc='lower right')
+
         return plt
     
-    def plot_lift_curve(self, figsize = (15, 10)) -> plt:
+    def plot_lift_curve(self, figsize: Tuple[int, int] = (15, 10)) -> plt.Figure:
         """
-        Generates a lift curve plot.
+        Plots the lift curve for the binary classifier to assess the effectiveness of the classifier.
+        The lift curve shows how much more likely we are to capture positive responses by using the model
+        compared to random guessing, across different segments of the population.
 
         Args:
-            figsize: A tuple of the width and height of the figure.
+            figsize (Tuple[int, int]): The width and height of the plot in inches.
 
         Returns:
-            A lift curve plot.
+            plt.Figure: The matplotlib figure object for the generated lift curve plot.
         """
-        skplt.metrics.plot_lift_curve(self.y_true, self.probas_reval, figsize=figsize)
+        # Ensure y_pred is for binary classification
+        if self.y_pred.ndim > 1:
+            probas = self.y_pred[:, 1]  # Assuming the second column is the positive class
+        else:
+            probas = self.y_pred
+
+        # Calculate true positive rate and the percentage of data
+        sorted_indices = np.argsort(probas)[::-1]
+        y_sorted = self.y_true[sorted_indices]
+        cumul_true = np.cumsum(y_sorted)
+        sample_n = np.arange(1, len(cumul_true) + 1)
+        lift = cumul_true / sample_n / np.mean(self.y_true)
+
+        # Create the plot
+        plt.figure(figsize=figsize)
+        plt.plot(sample_n / len(self.y_true), lift, label='Lift Curve', drawstyle='steps-post')
+        plt.plot([0, 1], [1, 1], 'k--', label='Baseline')
+
+        plt.title('Lift Curve')
+        plt.xlabel('Proportion of sample')
+        plt.ylabel('Lift')
+        plt.legend(loc='best')
+
+        return plt
+
+    def plot_cumulative_gain(self, figsize: Tuple[int, int] = (15, 10),) -> plt.Figure:
+        """
+        Plots the cumulative gains chart for the classifier based on provided true labels and predicted probabilities.
+
+        Args:
+            figsize (Tuple[int, int]): The width and height of the plot in inches.
+
+        Returns:
+            plt.Figure: A matplotlib figure object that can be shown or saved.
+        """
+        # Sort the probabilities and the corresponding true values
+        sorted_indices = np.argsort(self.y_pred)[::-1]
+        sorted_y_true = self.y_true[sorted_indices]
+
+        # Compute the cumulative sum of the true values
+        cumulative_gains = np.cumsum(sorted_y_true)
+        cumulative_gains = np.insert(cumulative_gains, 0, 0)  # prepend a zero for the start
+        cumulative_gains = cumulative_gains / cumulative_gains[-1]  # normalize to go from 0 to 1
+
+        # Calculate the percentage of samples
+        percentage_of_samples = np.linspace(0, 1, len(cumulative_gains))
+
+        plt.figure(figsize=figsize)
+        plt.plot(percentage_of_samples, cumulative_gains, 's-', drawstyle='steps-post', label='Cumulative Gain')
+        plt.plot([0, 1], [0, 1], 'k--', label='Baseline')
+
+        plt.title('Cumulative Gains Chart')
+        plt.xlabel('Percentage of Samples')
+        plt.ylabel('Gain')
+        plt.legend(loc='lower right')
+
         return plt
     
-    def plot_cumulative_gain(self, figsize = (15, 10)) -> plt:
+
+    def plot_ks_statistic(
+        self,
+        figsize: Tuple[int, int] = (15, 10),
+        title: str = 'KS Statistic',
+        title_fontsize: str = "large",
+        text_fontsize: str = "medium"
+    ) -> plt.Figure:
         """
-        Generates a cumulative gain curve plot.
+        Generates the KS statistic plot from labels and predicted scores/probabilities for binary classification.
 
         Args:
-            figsize: A tuple of the width and height of the figure.
+            figsize (Tuple[int, int], optional): Figure size of the plot. Defaults to (15, 10).
+            title (str, optional): Title of the generated plot. Defaults to 'KS Statistic'.
+            title_fontsize (str, optional): Matplotlib-style fontsizes for the title. Defaults to 'large'.
+            text_fontsize (str, optional): Matplotlib-style fontsizes for the text. Defaults to 'medium'.
 
         Returns:
-            A cumulative gain curve plot.
+            plt.Figure: A matplotlib figure object that can be shown or saved.
         """
-        skplt.metrics.plot_cumulative_gain(self.y_true, self.probas_reval, figsize=figsize)
-        return plt
+        y_true = np.array(self.y_true)
+        y_pred = np.array(self.y_pred)
 
-    def plot_ks_statistic(self, figsize=(12,10)):
-        """
-        Generates a KS statistic plot.
+        # Compute the KS statistic
+        fpr, tpr, thresholds = roc_curve(y_true, y_pred)
+        ks_statistic = tpr - fpr
+        ks_max_idx = np.argmax(ks_statistic)
+        ks_value = ks_statistic[ks_max_idx]
+        optimal_threshold = thresholds[ks_max_idx]
 
-        Args:
-            figsize: A tuple of the width and height of the figure.
+        plt.figure(figsize=figsize)
+        plt.plot(thresholds, tpr, color='blue', lw=2, label='TPR')
+        plt.plot(thresholds, fpr, color='red', lw=2, linestyle='--', label='FPR')
+        plt.plot(thresholds, ks_statistic, color='green', lw=2, label='KS Statistic')
 
-        Returns:
-            A KS statistic plot.
-        """
-        skplt.metrics.plot_ks_statistic(self.y_true, self.probas_reval, figsize=figsize)
+        # Mark the optimal threshold
+        plt.axvline(optimal_threshold, color='black', linestyle=':')
+        plt.axhline(ks_value, color='black', linestyle=':')
+        plt.scatter(optimal_threshold, ks_value, marker='o', color='red')
+        plt.text(optimal_threshold, ks_value, f'KS = {ks_value:.2f}\nThreshold = {optimal_threshold:.2f}', 
+                fontsize=text_fontsize, ha='center', color='black', backgroundcolor='white')
+
+        plt.xlabel('Threshold', fontsize=text_fontsize)
+        plt.ylabel('Rate', fontsize=text_fontsize)
+        plt.title(title, fontsize=title_fontsize)
+        plt.legend(loc='best', fontsize=text_fontsize)
+        plt.grid(True)
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.0])
         return plt
     
 
