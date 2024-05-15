@@ -1,6 +1,7 @@
 #types
 from typing import List, Optional, Tuple
 import os
+import shutil
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -38,6 +39,7 @@ from sklearn.calibration import calibration_curve, CalibrationDisplay
 #from plot_metric.functions import BinaryClassification
 import matplotlib.pyplot as plt
 from io import BytesIO
+import base64
 
 from .custom_metrics import lift, recall_score, f1_score
 
@@ -106,7 +108,8 @@ class MetricsReport:
             "roc_curve": self.plot_roc_curve,
             "ks_statistic": self.plot_ks_statistic,
             "calibration_curve": self.plot_calibration_curve,
-            "cumulative_gain": self.plot_cumulative_gain,
+            "cumulative_gain": self.plot_cumulative_gains_chart,
+            "cumulative_accuracy_profile": self.plot_cap,
             "precision_recall_vs_threshold": self.plot_precision_recall_vs_threshold,
             "lift_curve": self.plot_lift_curve
             }
@@ -183,9 +186,9 @@ class MetricsReport:
         figsize: Tuple[int, int] = (15, 10),
         title: str = 'Receiver Operating Characteristic',
         curves: Tuple[str] = ('micro', 'macro'),
-        cmap: str = 'nipy_spectral',
         title_fontsize: str = "large",
-        text_fontsize: str = "medium"
+        text_fontsize: str = "medium",
+        dpi: int = 75,
     ) -> plt.Figure:
         """
         Generates the ROC curve from labels and predicted scores/probabilities for binary classification.
@@ -195,7 +198,6 @@ class MetricsReport:
             title (str, optional): Title of the generated plot. Defaults to 'Receiver Operating Characteristic'.
             curves (Tuple[str], optional): Listing of which curves to plot ('micro', 'macro'). 
                 Defaults to ('micro', 'macro').
-            cmap (str, optional): Colormap used for plotting. Defaults to 'nipy_spectral'.
             title_fontsize (str, optional): Matplotlib-style fontsizes for the title. Defaults to 'large'.
             text_fontsize (str, optional): Matplotlib-style fontsizes for the text. Defaults to 'medium'.
 
@@ -228,7 +230,7 @@ class MetricsReport:
         optimal_idx = np.argmax(youdens_j)
         optimal_threshold = thresholds[optimal_idx]
 
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(fpr, tpr, color='black', lw=2, label=f'ROC curve (area = {roc_auc:0.2f})')
 
         if 'micro' in curves:
@@ -262,9 +264,9 @@ class MetricsReport:
         self,
         figsize: Tuple[int, int] = (15, 10),
         title: str = 'Precision and Recall Curve',
-        cmap: str = 'nipy_spectral',
         title_fontsize: str = "large",
-        text_fontsize: str = "medium"
+        text_fontsize: str = "medium",
+        dpi: int = 75,
     ) -> plt.Figure:
         """
         Generates the Precision-Recall curve from labels and predicted scores/probabilities for binary classification.
@@ -272,7 +274,6 @@ class MetricsReport:
         Args:
             figsize (Tuple[int, int], optional): Figure size of the plot. Defaults to (15, 10).
             title (str, optional): Title of the generated plot. Defaults to 'Precision and Recall Curve'.
-            cmap (str, optional): Colormap used for plotting. Defaults to 'nipy_spectral'.
             title_fontsize (str, optional): Matplotlib-style fontsizes for the title. Defaults to 'large'.
             text_fontsize (str, optional): Matplotlib-style fontsizes for the text. Defaults to 'medium'.
 
@@ -290,7 +291,7 @@ class MetricsReport:
         optimal_idx = np.argmax(f1_scores)
         optimal_threshold = thresholds[optimal_idx]
 
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(recall, precision, color='black', lw=2, label=f'PR curve (area = {average_precision:0.2f})')
         plt.plot([0, 1], [average_precision, average_precision], 'r--', lw=2, label=f'Mean precision = {average_precision:0.2f}')
         
@@ -319,7 +320,7 @@ class MetricsReport:
         plt.grid(True)
         return plt
     
-    def plot_confusion_matrix(self, figsize: Tuple[int, int] = (15, 10), font_size: int = 12, font_weight: str = 'bold') -> plt:
+    def plot_confusion_matrix(self, figsize: Tuple[int, int] = (15, 10), font_size: int = 12, font_weight: str = 'bold', dpi: int = 75) -> plt:
         """
         Generates a confusion matrix plot.
 
@@ -327,12 +328,13 @@ class MetricsReport:
             figsize (Tuple[int, int], optional): Figure size for the plot. Defaults to (15, 10).
             font_size (int, optional): Font size for the numbers inside the confusion matrix. Defaults to 12.
             font_weight (str, optional): Font weight for the numbers inside the confusion matrix. Defaults to 'bold'.
+            dpi (int, optional): Dots per inch for the plot. Defaults to 75.
 
         Returns:
             plt: The matplotlib.pyplot object with the plot.
         """
         cm = confusion_matrix(self.y_true, self.y_pred_binary)
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
         plt.title('Confusion Matrix')
         plt.colorbar()
@@ -370,7 +372,8 @@ class MetricsReport:
         c_thresh_line: str = 'red', 
         lw_thresh_line: float = 2,
         title: Optional[str] = None,
-        figsize = (15, 10)
+        figsize = (15, 10),
+        dpi: int = 75
     ) -> plt:
         """
         Plot distribution of the predictions for each class.
@@ -400,6 +403,7 @@ class MetricsReport:
             c_thresh_line (str, optional): Color for the threshold line. Defaults to 'red'.
             lw_thresh_line (float, optional): Line width of the threshold line. Defaults to 2.
             title (str, optional): Title of the graphic. Defaults to None.
+            dpi (int, optional): Dots per inch for the plot. Defaults to 75.
 
         Returns:
             plt: The matplotlib.pyplot object with the plot.
@@ -425,7 +429,7 @@ class MetricsReport:
         pred_df_plot = pred_df.copy(deep=True)
         pred_df_plot["class"] = pred_df_plot["class"].apply(lambda x: "Class 1" if x == 1 else "Class 0")
         
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         
         # Plot violin prediction distribution
         if display_violin:
@@ -447,7 +451,7 @@ class MetricsReport:
         
         return plt
     
-    def plot_class_hist(self, figsize = (15, 10)) -> plt:
+    def plot_class_hist(self, figsize = (15, 10), dpi: int = 75) -> plt:
         """
         Generates a class histogram plot, showing the distribution of predicted probabilities
         for each actual class label.
@@ -459,7 +463,7 @@ class MetricsReport:
             A matplotlib figure with the histogram plot.
         """
         plt.style.use('ggplot')
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
 
         # Отдельные предсказания для классов 0 и 1
         preds_for_true_0 = [pred for pred, true in zip(self.y_pred, self.y_true) if true == 0]
@@ -479,7 +483,7 @@ class MetricsReport:
         plt.legend()
         return plt
     
-    def plot_all_count_metrics(self, step=101, plot_count_coef=1e-2, figsize=(15, 10)) -> plt:
+    def plot_all_count_metrics(self, step=101, plot_count_coef=1e-2, figsize=(15, 10), dpi: int = 75, fontsize: int = 10) -> plt:
         """
         Generates a plot of accuracy, precision, recall, and class distribution as a function of the decision threshold.
 
@@ -492,7 +496,7 @@ class MetricsReport:
             A plot of accuracy, precision, recall, and class distribution as a function of the decision threshold.
         """
         plt.style.use('ggplot')
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         accuracy_score_list = []
         precision_score_list = []
         recall_score_list = []
@@ -522,7 +526,7 @@ class MetricsReport:
         for i, count in enumerate(list_counts):
             if (i % (len(list_counts) // 80) == 0 or count in (min_count, max_count)) and (list_counts[i-1] / list_counts[i]) - 1 > plot_count_coef:
                 y_offset = list_classes[i] + (max(list_classes) - min(list_classes)) * 0.02
-                plt.text(thresholds[i], y_offset, str(count), fontsize=7, rotation=90, fontweight='bold')
+                plt.text(thresholds[i], y_offset, str(count), fontsize=fontsize, rotation=90, fontweight='bold')
 
         plt.xlabel('Threshold')
         plt.ylabel('Scores')
@@ -533,7 +537,8 @@ class MetricsReport:
     
     def plot_calibration_curve(self, 
                                n_bins: int = 10, 
-                               figsize: Tuple[int, int] = (15, 10)
+                               figsize: Tuple[int, int] = (15, 10),
+                               dpi: int = 75
                                ) -> plt.Figure:
         """
         Plots calibration curves for classifier probability estimates to show how well the probabilities
@@ -548,7 +553,7 @@ class MetricsReport:
         Returns:
             plt.Figure: A matplotlib figure object that can be shown or saved.
         """
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot([0, 1], [0, 1], "k:", label="Perfectly calibrated")  # Ideal calibration line
 
         # Generate calibration curve data
@@ -564,7 +569,7 @@ class MetricsReport:
 
         return plt
     
-    def plot_lift_curve(self, figsize: Tuple[int, int] = (15, 10)) -> plt.Figure:
+    def plot_lift_curve(self, figsize: Tuple[int, int] = (15, 10), dpi: int = 75) -> plt.Figure:
         """
         Plots the lift curve for the binary classifier to assess the effectiveness of the classifier.
         The lift curve shows how much more likely we are to capture positive responses by using the model
@@ -590,7 +595,7 @@ class MetricsReport:
         lift = cumul_true / sample_n / np.mean(self.y_true)
 
         # Create the plot
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(sample_n / len(self.y_true), lift, label='Lift Curve', drawstyle='steps-post')
         plt.plot([0, 1], [1, 1], 'k--', label='Baseline')
 
@@ -601,38 +606,38 @@ class MetricsReport:
 
         return plt
 
-    def plot_cumulative_gain(self, figsize: Tuple[int, int] = (15, 10),) -> plt.Figure:
-        """
-        Plots the cumulative gains chart for the classifier based on provided true labels and predicted probabilities.
+    # def plot_cumulative_gain(self, figsize: Tuple[int, int] = (15, 10), dpi: int = 75) -> plt.Figure:
+    #     """
+    #     Plots the cumulative gains chart for the classifier based on provided true labels and predicted probabilities.
 
-        Args:
-            figsize (Tuple[int, int]): The width and height of the plot in inches.
+    #     Args:
+    #         figsize (Tuple[int, int]): The width and height of the plot in inches.
 
-        Returns:
-            plt.Figure: A matplotlib figure object that can be shown or saved.
-        """
-        # Sort the probabilities and the corresponding true values
-        sorted_indices = np.argsort(self.y_pred)[::-1]
-        sorted_y_true = self.y_true[sorted_indices]
+    #     Returns:
+    #         plt.Figure: A matplotlib figure object that can be shown or saved.
+    #     """
+    #     # Sort the probabilities and the corresponding true values
+    #     sorted_indices = np.argsort(self.y_pred)[::-1]
+    #     sorted_y_true = self.y_true[sorted_indices]
 
-        # Compute the cumulative sum of the true values
-        cumulative_gains = np.cumsum(sorted_y_true)
-        cumulative_gains = np.insert(cumulative_gains, 0, 0)  # prepend a zero for the start
-        cumulative_gains = cumulative_gains / cumulative_gains[-1]  # normalize to go from 0 to 1
+    #     # Compute the cumulative sum of the true values
+    #     cumulative_gains = np.cumsum(sorted_y_true)
+    #     cumulative_gains = np.insert(cumulative_gains, 0, 0)  # prepend a zero for the start
+    #     cumulative_gains = cumulative_gains / cumulative_gains[-1]  # normalize to go from 0 to 1
 
-        # Calculate the percentage of samples
-        percentage_of_samples = np.linspace(0, 1, len(cumulative_gains))
+    #     # Calculate the percentage of samples
+    #     percentage_of_samples = np.linspace(0, 1, len(cumulative_gains))
 
-        plt.figure(figsize=figsize)
-        plt.plot(percentage_of_samples, cumulative_gains, 's-', drawstyle='steps-post', label='Cumulative Gain')
-        plt.plot([0, 1], [0, 1], 'k--', label='Baseline')
+    #     plt.figure(figsize=figsize, dpi=dpi)
+    #     plt.plot(percentage_of_samples, cumulative_gains, 's-', drawstyle='steps-post', label='Cumulative Gain')
+    #     plt.plot([0, 1], [0, 1], 'k--', label='Baseline')
 
-        plt.title('Cumulative Gains Chart')
-        plt.xlabel('Percentage of Samples')
-        plt.ylabel('Gain')
-        plt.legend(loc='lower right')
+    #     plt.title('Cumulative Gains Chart')
+    #     plt.xlabel('Percentage of Samples')
+    #     plt.ylabel('Gain')
+    #     plt.legend(loc='lower right')
 
-        return plt
+    #     return plt
     
 
     def plot_ks_statistic(
@@ -640,7 +645,8 @@ class MetricsReport:
         figsize: Tuple[int, int] = (15, 10),
         title: str = 'KS Statistic',
         title_fontsize: str = "large",
-        text_fontsize: str = "medium"
+        text_fontsize: str = "medium",
+        dpi: int = 75
     ) -> plt.Figure:
         """
         Generates the KS statistic plot from labels and predicted scores/probabilities for binary classification.
@@ -664,7 +670,7 @@ class MetricsReport:
         ks_value = ks_statistic[ks_max_idx]
         optimal_threshold = thresholds[ks_max_idx]
 
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(thresholds, tpr, color='blue', lw=2, label='TPR')
         plt.plot(thresholds, fpr, color='red', lw=2, linestyle='--', label='FPR')
         plt.plot(thresholds, ks_statistic, color='green', lw=2, label='KS Statistic')
@@ -684,15 +690,15 @@ class MetricsReport:
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.0])
         return plt
-    
 
-    def plot_precision_recall_vs_threshold(self, fp_coefficient: int =1, figsize=(15, 10)):
+    def plot_precision_recall_vs_threshold(self, fp_coefficient: int = 1, figsize=(15, 10), dpi: int = 75) -> plt:
         """
         Plots Precision and Recall as a function of the decision threshold.
 
         Args:
             fp_coefficient (int): The coefficient to multiply FP by in the scoring rule.
             figsize (tuple): Figure size.
+            dpi (int): Dots per inch for the plot resolution.
 
         Returns:
             matplotlib.pyplot: The matplotlib plot object.
@@ -708,29 +714,37 @@ class MetricsReport:
         if len(y_true.shape) != 1 or len(probas_pred.shape) != 1:
             raise ValueError("y_true and probas_pred must be 1-dimensional arrays.")
         
-        thresholds = np.linspace(0, 1, 100)
+        thresholds_manual = np.linspace(0, 1, 100)
         TP_list, FP_list, Scores_list = [], [], []
         
-        for thresh in thresholds:
+        for thresh in thresholds_manual:
             pred_thresh = (probas_pred >= thresh).astype(int)
             tn, fp, fn, tp = confusion_matrix(y_true, pred_thresh).ravel()
             TP_list.append(tp)
             FP_list.append(fp)
-            Scores_list.append(tp - (fp_coefficient*fp))  # Custom scoring criteria
+            Scores_list.append(tp - (fp_coefficient * fp))  # Custom scoring criteria
         
-        optimal_idx = np.argmax(Scores_list)
-        optimal_threshold = thresholds[optimal_idx]
+        optimal_idx_manual = np.argmax(Scores_list)
+        optimal_threshold_manual = thresholds_manual[optimal_idx_manual]
 
         # Calculate precision and recall for various thresholds
         precision, recall, thresholds = precision_recall_curve(y_true, probas_pred)
-        
+
+        # Calculate the F1 scores for each threshold
+        f1_scores = 2 * (precision * recall) / (precision + recall)
+        optimal_idx = np.argmax(f1_scores)
+        optimal_threshold = thresholds[optimal_idx]
+
         # Create the plot
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(thresholds, precision[:-1], "b--", label="Precision")
         plt.plot(thresholds, recall[:-1], "g-", label="Recall")
+        
         # Highlighting the best threshold
-        plt.scatter([optimal_threshold], [precision[optimal_idx]], color="blue", marker='o', label=f"Best for Precision: {optimal_threshold:.2f}")
-        plt.scatter([optimal_threshold], [recall[optimal_idx]], color="green", marker='x', label=f"Best for Recall: {optimal_threshold:.2f}")
+        best_precision = precision[optimal_idx]
+        best_recall = recall[optimal_idx]
+        plt.scatter([optimal_threshold], [best_precision], color="blue", marker='o', label=f"Precision: {best_precision:.2f}")
+        plt.scatter([optimal_threshold], [best_recall], color="green", marker='x', label=f"Recall: {best_recall:.2f}")
         plt.axvline(x=optimal_threshold, color='grey', linestyle='--', label=f'Best Threshold: {optimal_threshold:.2f}')
         
         plt.xlabel("Threshold")
@@ -740,8 +754,8 @@ class MetricsReport:
         plt.grid(True)
         
         return plt
-    
-    def plot_tp_fp_with_optimal_threshold(self, fp_coefficient: int =1, figsize=(15, 10)):
+
+    def plot_tp_fp_with_optimal_threshold(self, fp_coefficient: int =1, figsize=(15, 10), dpi: int = 75) -> plt:
         """
         Plots the True Positives (TP) and False Positives (FP) rates across different thresholds and
         identifies the optimal threshold based on a scoring rule (TP - 2*FP).
@@ -778,7 +792,7 @@ class MetricsReport:
         optimal_threshold = thresholds[optimal_idx]
 
         # Create the plot
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(thresholds, TP_list, "b--", label="TP (True Positives)")
         plt.plot(thresholds, FP_list, "r-", label="FP (False Positives)")
         plt.axvline(x=optimal_threshold, color='grey', linestyle='--', label=f'Optimal Threshold: {optimal_threshold:.2f}')
@@ -792,6 +806,68 @@ class MetricsReport:
         plt.grid(True)
         
         return plt
+    
+    def plot_cumulative_gains_chart(self, figsize: Tuple[int, int] = (15, 10), dpi: int = 75) -> plt:
+        """
+        Plots the Cumulative Gains Chart for a binary classifier to show how well the predicted probabilities are calibrated with the actual outcomes.
+
+        Args:
+            figsize (Tuple[int, int], optional): Figure size for the plot. Defaults to (15, 10).
+            dpi (int, optional): Dots per inch for the plot resolution. Defaults to 75.
+
+        Returns:
+            plt: The matplotlib.pyplot object with the plot.
+        """
+        sorted_indices = np.argsort(self.y_pred)[::-1]
+        sorted_y_true = self.y_true[sorted_indices]
+
+        cumulative_gains = np.cumsum(sorted_y_true) / np.sum(sorted_y_true)
+        cumulative_random = np.linspace(0, 1, len(cumulative_gains))
+
+        plt.figure(figsize=figsize, dpi=dpi)
+        plt.plot(np.linspace(0, 1, len(cumulative_gains)), cumulative_gains, label='Model')
+        plt.plot(cumulative_random, cumulative_random, label='Random', linestyle='--')
+
+        plt.xlabel('Proportion of Samples')
+        plt.ylabel('Cumulative Gain')
+        plt.title('Cumulative Gains Chart')
+        plt.legend(loc='lower right')
+        plt.grid(True)
+        return plt
+
+    def plot_cap(self, figsize: Tuple[int, int] = (15, 10), dpi: int = 75) -> plt:
+        """
+        Plots the Cumulative Accuracy Profile (CAP) for a binary classifier to visualize model performance.
+
+        Args:
+            figsize (Tuple[int, int], optional): Figure size for the plot. Defaults to (15, 10).
+            dpi (int, optional): Dots per inch for the plot resolution. Defaults to 75.
+
+        Returns:
+            plt: The matplotlib.pyplot object with the plot.
+        """
+        sorted_indices = np.argsort(self.y_pred)[::-1]
+        sorted_y_true = self.y_true[sorted_indices]
+
+        cumulative_gains = np.cumsum(sorted_y_true)
+        total_positive = np.sum(self.y_true)
+        total_samples = len(self.y_true)
+
+        cumulative_random = np.linspace(0, total_positive, total_samples)
+        perfect_model = np.minimum(np.arange(1, total_samples + 1), total_positive)
+
+        plt.figure(figsize=figsize, dpi=dpi)
+        plt.plot(np.linspace(0, 1, total_samples), cumulative_gains / total_positive, label='Model')
+        plt.plot(np.linspace(0, 1, total_samples), perfect_model / total_positive, label='Perfect Model', linestyle='--')
+        plt.plot(np.linspace(0, 1, total_samples), cumulative_random / total_positive, label='Random Model', linestyle='--')
+
+        plt.xlabel('Proportion of Samples')
+        plt.ylabel('Cumulative Accuracy')
+        plt.title('Cumulative Accuracy Profile (CAP)')
+        plt.legend(loc='lower right')
+        plt.grid(True)
+        return plt
+
 
     def _classification_plots(self, save: bool = False, folder: str = '.') -> None:
         """
@@ -837,7 +913,7 @@ class MetricsReport:
         }
         return metrics
     
-    def plot_residual_plot(self, figsize = (15, 10)) -> plt:
+    def plot_residual_plot(self, figsize = (15, 10), dpi: int = 75) -> plt:
         """
         Generates a residual plot.
 
@@ -847,14 +923,14 @@ class MetricsReport:
         Returns:
             A residual plot.
         """
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.scatter(self.y_pred, self.y_true - self.y_pred)
         plt.xlabel("Predicted Values")
         plt.ylabel("Residuals")
         plt.title("Residual Plot")
         return plt
     
-    def plot_predicted_vs_actual(self, figsize = (15, 10)) -> plt:
+    def plot_predicted_vs_actual(self, figsize = (15, 10), dpi: int = 75) -> plt:
         """
         Generates a predicted vs actual plot.
 
@@ -864,7 +940,7 @@ class MetricsReport:
         Returns:
             A predicted vs actual plot.
         """
-        plt.figure(figsize=figsize)
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.scatter(self.y_pred, self.y_true)
         plt.xlabel("Predicted Values")
         plt.ylabel("Actual Values")
@@ -935,30 +1011,91 @@ class MetricsReport:
                 font-family: Arial, sans-serif;
                 font-size: 16px;
                 line-height: 1.5;
+                margin: 0;
+                padding: 0;
+                background-color: #f4f4f9;
             }
-
-            h1, h2 {
-                margin-top: 40px;
-                margin-bottom: 20px;
+            header {
+                background-color: #343a40;
+                color: white;
+                padding: 10px 0;
+                text-align: center;
+                position: fixed;
+                width: 100%;
+                top: 0;
+                z-index: 1000;
+                font-family: "Helvetica", "Arial", sans-serif;
             }
-
+            header h1 {
+                margin: 0;
+                font-size: 24px;
+                color: white; /* Ensure the text color is white */
+                background-color: #343a40;
+            }
+            main {
+                padding: 20px;
+                margin-top: 60px;
+            }
+            h1, h2, h3 {
+                color: #333;
+            }
             table {
+                width: 80%;
+                margin: 20px auto;
                 border-collapse: collapse;
-                margin-bottom: 40px;
+                table-layout: fixed;
+                text-align: left;
             }
-
             th, td {
                 border: 1px solid #ccc;
-                padding: 8px;
+                padding: 10px;
+                text-align: left;
             }
-
             th {
                 background-color: #f2f2f2;
             }
-
-            img {
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+            tr:hover {
+                background-color: #f1f1f1;
+            }
+            .summary {
+                background-color: #e2e8f0;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 20px auto;
+                width: 80%;
+            }
+            .summary h2 {
+                margin-top: 0;
+            }
+            .plot {
+                text-align: center;
+                margin: 20px 0;
+            }
+            .plot img {
                 max-width: 100%;
                 height: auto;
+                border-radius: 15px; /* Add rounded corners */
+            }
+            nav {
+                background-color: #333;
+                color: white;
+                padding: 10px;
+                position: fixed;
+                width: 100%;
+                bottom: 0;
+                text-align: center;
+                z-index: 1000;
+            }
+            nav a {
+                color: white;
+                margin: 0 15px;
+                text-decoration: none;
+            }
+            nav a:hover {
+                text-decoration: underline;
             }
         </style>
         """ if add_css else ""
@@ -970,39 +1107,116 @@ class MetricsReport:
                 {css}
             </head>
             <body>
-                <h1>Metrics Report</h1>
-                <h4>Type: {self.task_type}</h4>
-                <h2>Data info</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Info</th>
-                            <th>Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {self.__generate_html_rows(self.target_info)}
-                    </tbody>
-                </table>
-                <h2>Metrics</h2>
-                <p><b>threshold: {self.threshold}</b></p>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Metric</th>
-                            <th>Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {self.__generate_html_rows(self.metrics)}
-                    </tbody>
-                </table>
-                <h2>Plots</h2>
-                {self.add_svg_plots_to_html_rows()}
+                <header>
+                    <h1>Metrics Report</h1>
+                </header>
+                <main>
+                    <div class="summary">
+                        <h2>Summary</h2>
+                        <p>Type: {self.task_type}</p>
+                        <p>Threshold: {self.threshold}</p>
+                    </div>
+                    <h2>Data Information</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Info</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {self.__generate_html_rows(self.target_info)}
+                        </tbody>
+                    </table>
+                    <h2>Metrics</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {self.__generate_html_rows(self.metrics)}
+                        </tbody>
+                    </table>
+                    <h2>Plots</h2>
+                    {self.add_webp_plots_to_html_rows()}
+                </main>
             </body>
         </html>
         """
         return html
+
+    def add_png_plots_to_html_rows(self, figsize: Tuple[int, int] = (15, 6), dpi: int = 75) -> str:
+        """
+        Adds PNG plots to HTML rows.
+
+        Args:
+            figsize: Size of the figure for the plots.
+            dpi: Dots per inch for the plot resolution.
+
+        Returns:
+            str: HTML rows with embedded PNG images.
+        """
+        rows = ''
+        if self.task_type == "classification":
+            for name, plot_func in self.binary_plots.items():
+                plt.figure(figsize=figsize, dpi=dpi)
+                plot_func()
+                img_buf = BytesIO()
+                plt.savefig(img_buf, format='png', bbox_inches='tight', pad_inches=0.1, quality=85)
+                img_buf.seek(0)
+                img_base64 = base64.b64encode(img_buf.read()).decode('utf-8')
+                plt.close()
+                rows += f'<tr><td><img src="data:image/png;base64,{img_base64}" alt="{name}" /><br></td></tr>\n'
+        elif self.task_type == "regression":
+            for name, plot_func in self.reg_plots.items():
+                plt.figure(figsize=figsize, dpi=dpi)
+                plot_func()
+                img_buf = BytesIO()
+                plt.savefig(img_buf, format='png', bbox_inches='tight', pad_inches=0.1, quality=85)
+                img_buf.seek(0)
+                img_base64 = base64.b64encode(img_buf.read()).decode('utf-8')
+                plt.close()
+                rows += f'<tr><td><img src="data:image/png;base64,{img_base64}" alt="{name}" /><br></td></tr>\n'
+        return rows
+    
+    def add_webp_plots_to_html_rows(self, figsize: Tuple[int, int] = (15, 10), dpi: int = 75) -> str:
+        """
+        Adds WebP plots to HTML rows.
+
+        Args:
+            figsize: Size of the figure for the plots.
+            dpi: Dots per inch for the plot resolution.
+
+        Returns:
+            str: HTML rows with embedded WebP images.
+        """
+        rows = ''
+        plt.ioff()
+        if self.task_type == "classification":
+            for name, plot_func in self.binary_plots.items():
+                plt.figure(figsize=figsize, dpi=dpi)
+                plot_func()
+                img_buf = BytesIO()
+                plt.savefig(img_buf, format='webp', bbox_inches='tight', pad_inches=0.1)
+                img_buf.seek(0)
+                img_base64 = base64.b64encode(img_buf.read()).decode('utf-8')
+                plt.close()
+                rows += f'<tr><td><img loading="lazy" src="data:image/webp;base64,{img_base64}" alt="{name}" style="border-radius: 15px;" /><br></td></tr>\n'
+        elif self.task_type == "regression":
+            for name, plot_func in self.reg_plots.items():
+                plt.figure(figsize=figsize, dpi=dpi)
+                plot_func()
+                img_buf = BytesIO()
+                plt.savefig(img_buf, format='webp', bbox_inches='tight', pad_inches=0.1)
+                img_buf.seek(0)
+                img_base64 = base64.b64encode(img_buf.read()).decode('utf-8')
+                plt.close()
+                rows += f'<tr><td><img loading="lazy" src="data:image/webp;base64,{img_base64}" alt="{name}" style="border-radius: 15px;" /><br></td></tr>\n'
+        return rows
+
     
     def add_svg_plots_to_html_rows(self, figsize = (15, 10)) -> str:
         """
@@ -1069,7 +1283,7 @@ class MetricsReport:
         # Get target info
         self.__target_info()
         # Generate HTML report
-        html = self._generate_html_report(folder, add_css=True)
+        html = self._generate_html_report(add_css=True)
 
         file_path = f'{folder}/{name}.html'
         with open(file_path, 'w') as f:
