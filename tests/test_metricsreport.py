@@ -4,7 +4,6 @@ from matplotlib import pyplot as plt
 
 from metricsreport import MetricsReport
 
-
 @pytest.fixture
 def binary_classification_data():
     y_true = [0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0]
@@ -36,13 +35,13 @@ def test_determine_task_type(binary_classification_data, regression_data):
     report = MetricsReport(y_true, y_pred)
     assert report._determine_task_type(y_true) == "regression"
 
-
 def test_classification_metrics(binary_classification_data):
     y_true, y_pred = binary_classification_data
     report = MetricsReport(y_true, y_pred, threshold=0.5)
     assert isinstance(report.metrics, dict)
     assert set(report.metrics.keys()) == {
-    'AP', 'AUC', 'Log Loss', 'MSE', 'Accuracy', 'Precision_weighted', 'MCC', 'TN', 'FP', 'FN', 'TP', 'P precision', 'P recall', 'P f1-score', 'P support', 'N precision', 'N recall', 'N f1-score', 'N support'
+        'AP', 'AUC', 'Log Loss', 'MSE', 'Accuracy', 'Precision_weighted', 'MCC', 'TN', 'FP', 'FN', 'TP', 
+        'P precision', 'P recall', 'P f1-score', 'P support', 'N precision', 'N recall', 'N f1-score', 'N support'
     }
 
 def test_regression_metrics(regression_data):
@@ -50,32 +49,22 @@ def test_regression_metrics(regression_data):
     report = MetricsReport(y_true, y_pred)
     assert isinstance(report.metrics, dict)
     assert set(report.metrics.keys()) == {
-        'Mean Squared Error', 'Mean Squared Log Error', 
-        'Mean Absolute Error', 'R^2', 
-        'Explained Variance Score', 
-        'Max Error', 
-        'Mean Absolute Percentage Error'
+        'Mean Squared Error', 'Mean Squared Log Error', 'Mean Absolute Error', 'R^2', 
+        'Explained Variance Score', 'Max Error', 'Mean Absolute Percentage Error'
     }
 
 def test_classification_metrics_values(binary_classification_data):
     y_true, y_pred = binary_classification_data
     report = MetricsReport(y_true, y_pred, threshold=0.5)
-    assert report.metrics['AUC'] == 0.7857
-    assert report.metrics['Log Loss'] == 0.5807
-    assert report.metrics['AP'] == 0.6635
-    assert report.metrics['Accuracy'] == 0.7692
-    assert report.metrics['Precision_weighted'] == 0.7784
-    #assert report.metrics['Recall'] == 0.8333
-    #assert report.metrics['F1 Score'] == 0.7692
-    #assert report.metrics['MCC'] == 0.5476
+    assert np.isclose(report.metrics['AUC'], 0.7857, atol=1e-4)
+    assert np.isclose(report.metrics['Log Loss'], 0.5807, atol=1e-4)
+    assert np.isclose(report.metrics['AP'], 0.6635, atol=1e-4)
+    assert np.isclose(report.metrics['Accuracy'], 0.7692, atol=1e-4)
+    assert np.isclose(report.metrics['Precision_weighted'], 0.7784, atol=1e-4)
     assert report.metrics['TN'] == 5
     assert report.metrics['FP'] == 2
     assert report.metrics['FN'] == 1
     assert report.metrics['TP'] == 5
-    
-# add test где с threshold=0.5 нет ни одной 1 все 0
-#     y_true = [0, 1, 1, 0, ]
-#    y_pred = [0.2, 0.3, 0.3, 0.1,]
 
 def test_y_pred_bin_all_zeros():
     y_true = [0, 1, 1, 0]
@@ -90,22 +79,97 @@ def test_y_true_all_zeros():
     y_true = [0, 0, 0, 0]
     y_pred = [0.2, 0.3, 0.3, 0.1]
     with pytest.raises(ValueError) as exc_info:
-        report = MetricsReport(y_true, y_pred, threshold=0.5)
+        MetricsReport(y_true, y_pred, threshold=0.5)
     assert str(exc_info.value) == "For classification tasks, y_true should contain at least one True value."
 
-# def test_plot_calibration_curve(binary_classification_data):
-#     y_true, y_pred = binary_classification_data
-    
-#     # Initialize MetricsReport
-#     metrics_report = MetricsReport(y_true, y_pred)
-    
-#     # Execute the plotting method
-#     plot = metrics_report.plot_calibration_curve()
-    
-#     # Assertions to ensure the plot is created successfully
-#     assert isinstance(plot, plt.Figure), "The output should be a matplotlib Figure."
-#     # Checking that the plot has at least one axis and line
-#     assert len(plot.axes) > 0, "Plot should have at least one axis."
-#     assert len(plot.axes[0].lines) > 0, "Axis should contain at least one line."
-#     assert plot.axes[0].get_title() == 'Calibration plots (Reliability Curves)', "Title does not match."
-#     assert 'Fraction of positives' in [label.get_text() for label in plot.axes[0].get_ylabel()], "Y-axis label is incorrect."
+########### Plot Tests ############
+
+def test_plot_roc_curve(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_roc_curve()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_precision_recall_curve(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_precision_recall_curve()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_confusion_matrix(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_confusion_matrix()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_class_distribution(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_class_distribution()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_class_hist(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_class_hist()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_all_count_metrics(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_all_count_metrics()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_calibration_curve(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_calibration_curve()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_lift_curve(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_lift_curve()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_ks_statistic(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_ks_statistic()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_precision_recall_vs_threshold(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_precision_recall_vs_threshold()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_tp_fp_with_optimal_threshold(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_tp_fp_with_optimal_threshold()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_cumulative_gains_chart(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_cumulative_gains_chart()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_cap(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    plt_obj = report.plot_cap()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_residual_plot(regression_data):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    plt_obj = report.plot_residual_plot()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_predicted_vs_actual(regression_data):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    plt_obj = report.plot_predicted_vs_actual()
+    assert isinstance(plt_obj.gcf(), plt.Figure)
