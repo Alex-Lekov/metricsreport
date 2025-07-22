@@ -66,6 +66,7 @@ def test_classification_metrics_values(binary_classification_data):
     assert report.metrics['FN'] == 1
     assert report.metrics['TP'] == 5
 
+@pytest.mark.filterwarnings("ignore:Precision is ill-defined")
 def test_y_pred_bin_all_zeros():
     y_true = [0, 1, 1, 0]
     y_pred = [0.2, 0.3, 0.3, 0.1]

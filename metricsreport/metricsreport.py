@@ -125,7 +125,7 @@ class MetricsReport:
             'Log Loss': round(log_loss(self.y_true, self.y_pred), 4),
             'MSE': round(mean_squared_error(self.y_true, self.y_pred), 4),
             'Accuracy': round(accuracy_score(self.y_true, self.y_pred_binary), 4),
-            'Precision_weighted': round(precision_score(self.y_true, self.y_pred_binary, average='weighted'), 4),
+            'Precision_weighted': round(precision_score(self.y_true, self.y_pred_binary, average='weighted', zero_division=0), 4),
             'MCC': round(matthews_corrcoef(self.y_true, self.y_pred_binary), 4),
             'TN': tn,
             'FP': fp,
@@ -455,7 +455,7 @@ class MetricsReport:
             predicted_labels = pred_prob > i
 
             accuracy_score_list.append(accuracy_score(target, predicted_labels))
-            precision_score_list.append(precision_score(target, predicted_labels))
+            precision_score_list.append(precision_score(target, predicted_labels, zero_division=0))
             recall_score_list.append(recall_score(target, predicted_labels))
             list_classes.append(predicted_labels.sum() / len(predicted_labels))
             list_counts.append(predicted_labels.sum())
@@ -468,7 +468,7 @@ class MetricsReport:
 
         min_count, max_count = min(list_counts), max(list_counts)
         for i, count in enumerate(list_counts):
-            if (i % (len(list_counts) // 80) == 0 or count in (min_count, max_count)) and (list_counts[i-1] / list_counts[i]) - 1 > plot_count_coef:
+            if count != 0 and (i % (len(list_counts) // 80) == 0 or count in (min_count, max_count)) and (list_counts[i-1] / list_counts[i]) - 1 > plot_count_coef:
                 y_offset = list_classes[i] + (max(list_classes) - min(list_classes)) * 0.02
                 plt.text(thresholds[i], y_offset, str(count), fontsize=fontsize, rotation=90, fontweight='bold')
 
