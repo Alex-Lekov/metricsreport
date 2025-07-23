@@ -1,6 +1,9 @@
 import pytest
 import numpy as np
 from matplotlib import pyplot as plt
+import os
+import shutil
+import pandas as pd
 
 from metricsreport import MetricsReport
 
@@ -91,6 +94,13 @@ def test_plot_roc_curve(binary_classification_data):
     plt_obj = report.plot_roc_curve()
     assert isinstance(plt_obj.gcf(), plt.Figure)
 
+def test_plot_roc_curve_invalid_curves(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    with pytest.raises(ValueError) as exc_info:
+        report.plot_roc_curve(curves=('invalid',))
+    assert str(exc_info.value) == 'curves must contain "micro" or "macro"'
+
 def test_plot_precision_recall_curve(binary_classification_data):
     y_true, y_pred = binary_classification_data
     report = MetricsReport(y_true, y_pred, threshold=0.5)
@@ -145,11 +155,27 @@ def test_plot_precision_recall_vs_threshold(binary_classification_data):
     plt_obj = report.plot_precision_recall_vs_threshold()
     assert isinstance(plt_obj.gcf(), plt.Figure)
 
+def test_plot_precision_recall_vs_threshold_invalid_input(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    report.y_true = np.array([[1,2],[3,4]])
+    with pytest.raises(ValueError) as exc_info:
+        report.plot_precision_recall_vs_threshold()
+    assert str(exc_info.value) == "y_true and probas_pred must have the same length."
+
 def test_plot_tp_fp_with_optimal_threshold(binary_classification_data):
     y_true, y_pred = binary_classification_data
     report = MetricsReport(y_true, y_pred, threshold=0.5)
     plt_obj = report.plot_tp_fp_with_optimal_threshold()
     assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_plot_tp_fp_with_optimal_threshold_invalid_input(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    report.y_pred = np.array([1,2])
+    with pytest.raises(ValueError) as exc_info:
+        report.plot_tp_fp_with_optimal_threshold()
+    assert str(exc_info.value) == "y_true and probas_pred must have the same length."
 
 def test_plot_cumulative_gains_chart(binary_classification_data):
     y_true, y_pred = binary_classification_data
@@ -174,3 +200,140 @@ def test_plot_predicted_vs_actual(regression_data):
     report = MetricsReport(y_true, y_pred)
     plt_obj = report.plot_predicted_vs_actual()
     assert isinstance(plt_obj.gcf(), plt.Figure)
+
+def test_target_info_classification(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report._MetricsReport__target_info()
+    assert report.target_info == {
+        'Count of samples': 13,
+        'Count True class': 6,
+        'Count False class': 7,
+        'Class balance %': 46.2,
+    }
+
+def test_target_info_regression(regression_data):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    report._MetricsReport__target_info()
+    assert report.target_info == {
+        'Count of samples': 5,
+        'Mean of target': 3.0,
+        'Std of target': 1.41,
+        'Min of target': 1,
+        'Max of target': 5,
+    }
+
+def test_generate_html_report(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report._MetricsReport__target_info()
+    html = report._generate_html_report()
+    assert "Metrics Report" in html
+    assert "Summary" in html
+    assert "Data Information" in html
+    assert "Metrics" in html
+    assert "Plots" in html
+
+def test_generate_html_report_no_css(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report._MetricsReport__target_info()
+    html = report._generate_html_report(add_css=False)
+    assert "<style>" not in html
+
+def test_add_webp_plots_to_html_rows_classification(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    rows = report.add_webp_plots_to_html_rows()
+    assert 'data:image/webp;base64,' in rows
+    assert 'all_count_metrics' in rows
+
+def test_add_webp_plots_to_html_rows_regression(regression_data):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    rows = report.add_webp_plots_to_html_rows()
+    assert 'data:image/webp;base64,' in rows
+    assert 'residual_plot' in rows
+
+def test_generate_html_rows():
+    report = MetricsReport([0,1],[0.1,0.9])
+    data = {'int': 1, 'float': 0.5}
+    rows = report._MetricsReport__generate_html_rows(data)
+    assert '<tr><td>int</td><td>1</td></tr>' in rows
+    assert '<tr><td>float</td><td>0.5</td></tr>' in rows
+
+def test_save_report(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report.save_report(folder='test_report', name='test_report')
+    assert os.path.exists('test_report/test_report.html')
+    shutil.rmtree('test_report')
+
+def test_print_metrics_classification(binary_classification_data, capsys):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report.print_metrics()
+    captured = capsys.readouterr()
+    assert "AP" in captured.out
+    assert "AUC" in captured.out
+
+def test_print_metrics_regression(regression_data, capsys):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    report.print_metrics()
+    captured = capsys.readouterr()
+    assert "Mean Squared Error" in captured.out
+    assert "R^2" in captured.out
+
+def test_classification_plots(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report._classification_plots(save=True, folder='test_plots')
+    assert os.path.exists('test_plots/plots/all_count_metrics.png')
+    shutil.rmtree('test_plots')
+
+def test_regression_plots(regression_data):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    report._regression_plots(save=True, folder='test_plots')
+    assert os.path.exists('test_plots/plots/residual_plot.png')
+    shutil.rmtree('test_plots')
+
+def test_print_report_classification(binary_classification_data, capsys):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report.print_report()
+    captured = capsys.readouterr()
+    assert "Classification Report" in captured.out
+    assert "Metrics Report" in captured.out
+    assert "Lift" in captured.out
+    assert "Plots" in captured.out
+
+def test_print_report_regression(regression_data, capsys):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    report.print_report()
+    captured = capsys.readouterr()
+    assert "Metrics Report" in captured.out
+    assert "Plots" in captured.out
+
+def test_plot_metrics_classification(binary_classification_data):
+    y_true, y_pred = binary_classification_data
+    report = MetricsReport(y_true, y_pred)
+    report.plot_metrics()
+
+def test_plot_metrics_regression(regression_data):
+    y_true, y_pred = regression_data
+    report = MetricsReport(y_true, y_pred)
+    report.plot_metrics()
+
+@pytest.mark.filterwarnings("ignore:For classification tasks threshold")
+def test_y_pred_binary_all_zeros():
+    y_true = [0, 1, 1, 0]
+    y_pred = [0.1, 0.2, 0.3, 0.4]
+    report = MetricsReport(y_true, y_pred, threshold=0.5)
+    assert report.metrics['TP'] == 0
+    assert report.metrics['FP'] == 0
+    assert report.metrics['FN'] == 2
+    assert report.metrics['TN'] == 2

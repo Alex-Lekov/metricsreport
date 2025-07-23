@@ -467,8 +467,9 @@ class MetricsReport:
         plt.axvline(x=self.threshold, color='r', linestyle='--', label=f'Threshold: {self.threshold}')
 
         min_count, max_count = min(list_counts), max(list_counts)
+        modulo_divisor = max(1, len(list_counts) // 80)
         for i, count in enumerate(list_counts):
-            if count != 0 and (i % (len(list_counts) // 80) == 0 or count in (min_count, max_count)) and (list_counts[i-1] / list_counts[i]) - 1 > plot_count_coef:
+            if count != 0 and (i % modulo_divisor == 0 or count in (min_count, max_count)) and (list_counts[i-1] / list_counts[i]) - 1 > plot_count_coef:
                 y_offset = list_classes[i] + (max(list_classes) - min(list_classes)) * 0.02
                 plt.text(thresholds[i], y_offset, str(count), fontsize=fontsize, rotation=90, fontweight='bold')
 
