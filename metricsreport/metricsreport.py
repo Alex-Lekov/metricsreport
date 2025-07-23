@@ -115,7 +115,7 @@ class MetricsReport:
             output_dict=True,
             labels=[0, 1],
             target_names=['negative', 'positive'],
-            zero_division='warn'
+            zero_division=0
         )
         report = pd.json_normalize(report, sep=' ').to_dict(orient='records')[0]
 
@@ -1003,7 +1003,6 @@ class MetricsReport:
         plt.ioff()
         if self.task_type == "classification":
             for name, plot_func in self.binary_plots.items():
-                plt.figure(figsize=figsize, dpi=dpi)
                 plot_func()
                 img_buf = BytesIO()
                 plt.savefig(img_buf, format='webp', bbox_inches='tight', pad_inches=0.1)
@@ -1013,7 +1012,6 @@ class MetricsReport:
                 rows += f'<tr><td><img loading="lazy" src="data:image/webp;base64,{img_base64}" alt="{name}" style="border-radius: 15px;" /><br></td></tr>\n'
         elif self.task_type == "regression":
             for name, plot_func in self.reg_plots.items():
-                plt.figure(figsize=figsize, dpi=dpi)
                 plot_func()
                 img_buf = BytesIO()
                 plt.savefig(img_buf, format='webp', bbox_inches='tight', pad_inches=0.1)
@@ -1119,7 +1117,7 @@ class MetricsReport:
         if self.task_type == 'classification':
             print(f'Threshold = {self.threshold}')
             print("\n                  |  Classification Report | \n")
-            print(classification_report(self.y_true, self.y_pred_binary, target_names=["Class 0", "Class 1"]))
+            print(classification_report(self.y_true, self.y_pred_binary, target_names=["Class 0", "Class 1"], zero_division=0))
             print("\n                  |  Metrics Report: | \n")
             self.print_metrics()
             print("\n                  |  Lift: | \n")
